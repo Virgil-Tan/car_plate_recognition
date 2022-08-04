@@ -43,6 +43,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
@@ -203,6 +204,9 @@ public class FullScreenAnalyse implements ImageAnalysis.Analyzer {
                                 Log.e("",plate);
                                 Log.e("","a: "+textToSpeech.isSpeaking());
                                 Log.e("","b: "+targetPlate);
+
+                                plate = plate.toLowerCase();
+                                targetPlate = targetPlate.toLowerCase();
 
                                 if(!textToSpeech.isSpeaking() && plate.equals(targetPlate)){
                                     startAuto("found the car");

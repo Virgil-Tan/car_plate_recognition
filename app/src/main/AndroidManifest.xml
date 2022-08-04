@@ -16,10 +16,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.NoActionBar" >
         <activity
-            android:name=".EntranceActivity"
-            android:exported="false" >
-        </activity>
-        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="portrait" >
