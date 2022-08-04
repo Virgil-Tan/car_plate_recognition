@@ -1,11 +1,21 @@
 package com.example.yolov5tfliteandroid;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.view.PreviewView;
 
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.View;
 import android.widget.AdapterView;
@@ -18,44 +28,36 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.example.yolov5tfliteandroid.analysis.FullScreenAnalyse;
 import com.example.yolov5tfliteandroid.detector.Yolov5TFLiteDetector;
 import com.example.yolov5tfliteandroid.utils.CameraProcess;
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.util.ArrayList;
+import java.util.Locale;
+
 public class MainActivity extends AppCompatActivity {
 
-    private boolean IS_FULL_SCREEN = false;
-
+    private SpeechRecognizer speechRecognizer_com;
+    private SpeechRecognizer speechRecognizer_pla;
+    public static final Integer RecordAudioRequestCode = 1;
     private PreviewView cameraPreviewMatch;
     private ImageView boxLabelCanvas;
-    private Spinner modelSpinner;
-    private TextView inferenceTimeTextView;
     private ListenableFuture<ProcessCameraProvider> cameraProviderFuture;
     private Yolov5TFLiteDetector yolov5TFLiteDetector;
 
-    private Button farther_button;
-    private Button closer_button;
+    private TextToSpeech textToSpeech = null;
 
     private CameraProcess cameraProcess = new CameraProcess();
 
-    /**
-     * 获取屏幕旋转角度,0表示拍照出来的图片是横屏
-     *
-     */
-    protected int getScreenOrientation() {
-        switch (getWindowManager().getDefaultDisplay().getRotation()) {
-            case Surface.ROTATION_270:
-                return 270;
-            case Surface.ROTATION_180:
-                return 180;
-            case Surface.ROTATION_90:
-                return 90;
-            default:
-                return 0;
-        }
-    }
+    private ImageView plate_btn;
+    private Button command_btn;
+
+    private TextView palte_text;
+    private String targetPlate;
 
     /**
      * 加载模型
@@ -77,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -91,15 +94,13 @@ public class MainActivity extends AppCompatActivity {
         // box/label画面
         boxLabelCanvas = findViewById(R.id.box_label_canvas);
 
-        farther_button = findViewById(R.id.Farther_button);
+        plate_btn = findViewById(R.id.button);
+        command_btn = findViewById(R.id.button2);
+        palte_text = findViewById(R.id.car_plate);
 
-        closer_button = findViewById(R.id.Closer_button);
-
-        // 下拉按钮
-        modelSpinner = findViewById(R.id.model);
+        targetPlate = "";
 
         // 实时更新的一些view
-        inferenceTimeTextView = findViewById(R.id.inference_time);
         cameraProviderFuture = ProcessCameraProvider.getInstance(this);
 
         // 申请摄像头权限
@@ -116,33 +117,175 @@ public class MainActivity extends AppCompatActivity {
         // 初始化加载yolov5s
         initModel("yolov5s");
 
-        // 监听模型切换按钮
-        modelSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        //语音识别系统
+        //check the permission of using audio
+        if(ContextCompat.checkSelfPermission(this,Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED){
+            checkPermission();
+        }
+
+        speechRecognizer_com = SpeechRecognizer.createSpeechRecognizer(this);
+
+        final Intent speechRecognizerIntent_com = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        speechRecognizerIntent_com.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        speechRecognizerIntent_com.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+
+
+        speechRecognizer_pla = SpeechRecognizer.createSpeechRecognizer(this);
+
+        final Intent speechRecognizerIntent_pla = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        speechRecognizerIntent_pla.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        speechRecognizerIntent_pla.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+
+        speechRecognizer_pla.setRecognitionListener(new RecognitionListener() {
             @Override
-            public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-                String model = (String) adapterView.getItemAtPosition(i);
-                Toast.makeText(MainActivity.this, "loading model: " + model, Toast.LENGTH_LONG).show();
-                initModel(model);
+            public void onReadyForSpeech(Bundle bundle) {
+            }
+            @Override
+            public void onBeginningOfSpeech() {
+            }
+            @Override
+            public void onRmsChanged(float v) {
+            }
+            @Override
+            public void onBufferReceived(byte[] bytes) {
+            }
+            @Override
+            public void onEndOfSpeech() {
+            }
+            @Override
+            public void onError(int i) {
+            }
+            @Override
+            public void onResults(Bundle bundle) {
+                ArrayList<String> data = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                palte_text.setText("Target car plate: "+data.get(0));
+
+                startAuto("There car plate is "+data.get(0));
+                targetPlate = data.get(0);
                 FullScreenAnalyse fullScreenAnalyse = new FullScreenAnalyse(MainActivity.this,
                         cameraPreviewMatch,
                         boxLabelCanvas,
                         rotation,
-                        inferenceTimeTextView,
-                        yolov5TFLiteDetector);
-                cameraProcess.startCamera(MainActivity.this, fullScreenAnalyse, cameraPreviewMatch,farther_button,closer_button);
+                        yolov5TFLiteDetector,
+                        textToSpeech,
+                        targetPlate);
+                cameraProcess.startCamera(MainActivity.this,
+                        fullScreenAnalyse,
+                        cameraPreviewMatch,
+                        speechRecognizer_com);
             }
             @Override
-            public void onNothingSelected(AdapterView<?> adapterView) {
+            public void onPartialResults(Bundle bundle) {
+
+            }
+            @Override
+            public void onEvent(int i, Bundle bundle) {
 
             }
         });
 
-        FullScreenAnalyse fullScreenAnalyse = new FullScreenAnalyse(MainActivity.this,
-                cameraPreviewMatch,
-                boxLabelCanvas,
-                rotation,
-                inferenceTimeTextView,
-                yolov5TFLiteDetector);
-        cameraProcess.startCamera(MainActivity.this, fullScreenAnalyse, cameraPreviewMatch,farther_button,closer_button);
+        //语音提示系统
+        initTTS();
+
+        // 监听模型切换按钮
+
+        command_btn.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                if (motionEvent.getAction() == MotionEvent.ACTION_UP){
+                    speechRecognizer_com.stopListening();
+
+                }
+                if (motionEvent.getAction() == MotionEvent.ACTION_DOWN){
+                    speechRecognizer_com.startListening(speechRecognizerIntent_com);
+                }
+                return false;
+            }
+        });
+
+        plate_btn.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                if (motionEvent.getAction() == MotionEvent.ACTION_UP){
+                    speechRecognizer_pla.stopListening();
+                }
+                if (motionEvent.getAction() == MotionEvent.ACTION_DOWN){
+                    speechRecognizer_pla.startListening(speechRecognizerIntent_pla);
+                }
+                return false;
+            }
+        });
+
+//        FullScreenAnalyse fullScreenAnalyse = new FullScreenAnalyse(MainActivity.this,
+//                cameraPreviewMatch,
+//                boxLabelCanvas,
+//                rotation,
+//                yolov5TFLiteDetector,
+//                textToSpeech,
+//                targetPlate);
+//        cameraProcess.startCamera(MainActivity.this,
+//                fullScreenAnalyse,
+//                cameraPreviewMatch,
+//                speechRecognizer_com);
     }
+
+    private void initTTS() {
+        //实例化自带语音对象
+        textToSpeech = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if (status == textToSpeech.SUCCESS) {
+
+                    textToSpeech.setPitch(1.0f);//方法用来控制音调
+                    textToSpeech.setSpeechRate(1.0f);//用来控制语速
+
+                    //判断是否支持下面两种语言
+                    int result1 = textToSpeech.setLanguage(Locale.US);
+                    boolean a = (result1 == TextToSpeech.LANG_MISSING_DATA || result1 == TextToSpeech.LANG_NOT_SUPPORTED);
+
+                    Log.i("this", "US--》" + a);
+                }
+
+            }
+        });
+    }
+
+    public void startAuto(String data) {
+        // 设置音调，值越大声音越尖（女生），值越小则变成男声,1.0是常规
+        textToSpeech.setPitch(1.0f);
+        // 设置语速
+        textToSpeech.setSpeechRate(0.3f);
+        textToSpeech.speak(data, TextToSpeech.QUEUE_FLUSH, null);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        textToSpeech.stop(); // 不管是否正在朗读TTS都被打断
+        textToSpeech.shutdown(); // 关闭，释放资源
+    }
+    //=============================================================
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        speechRecognizer_pla.destroy();
+        speechRecognizer_com.destroy();
+    }
+
+    private void checkPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            ActivityCompat.requestPermissions(this,new String[]{Manifest.permission.RECORD_AUDIO},RecordAudioRequestCode);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == RecordAudioRequestCode && grantResults.length > 0 ){
+            if(grantResults[0] == PackageManager.PERMISSION_GRANTED)
+                Toast.makeText(this,"Permission Granted",Toast.LENGTH_SHORT).show();
+        }
+    }
+
 }

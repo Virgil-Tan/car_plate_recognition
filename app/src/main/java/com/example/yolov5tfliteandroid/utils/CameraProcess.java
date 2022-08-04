@@ -8,6 +8,9 @@ import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.os.Bundle;
+import android.speech.RecognitionListener;
+import android.speech.SpeechRecognizer;
 import android.util.Log;
 import android.util.Rational;
 import android.util.Size;
@@ -37,6 +40,7 @@ import com.example.yolov5tfliteandroid.R;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.concurrent.ExecutionException;
 
 public class CameraProcess {
@@ -73,7 +77,10 @@ public class CameraProcess {
     /**
      * 打开摄像头，提供对应的preview, 并且注册analyse事件, analyse就是要对摄像头每一帧进行分析的操作
      */
-    public void startCamera(Context context, ImageAnalysis.Analyzer analyzer, PreviewView previewView, Button farther_button, Button closer_button) {
+    public void startCamera(Context context,
+                            ImageAnalysis.Analyzer analyzer,
+                            PreviewView previewView,
+                            SpeechRecognizer speechRecognizer) {
 
         cameraProviderFuture = ProcessCameraProvider.getInstance(context);
         cameraProviderFuture.addListener(new Runnable() {
@@ -106,25 +113,59 @@ public class CameraProcess {
                     //用来调焦操作
                     CameraControl mCameraControl = camera.getCameraControl();
 
-                    Button Farther_button = farther_button.findViewById(R.id.Farther_button);
-                    Farther_button.setOnClickListener(new View.OnClickListener() {
-                        public void onClick(View v) {
-                            zoom_degree = zoom_degree-0.1f;
-                            if(zoom_degree<0){
-                                zoom_degree = 0;
-                            }
-                            mCameraControl.setLinearZoom(zoom_degree);
-                        }
-                    });
+                    speechRecognizer.setRecognitionListener(new RecognitionListener() {
+                        @Override
+                        public void onReadyForSpeech(Bundle bundle) {
 
-                    Button Closer_button = closer_button.findViewById(R.id.Closer_button);
-                    Closer_button.setOnClickListener(new View.OnClickListener() {
-                        public void onClick(View v) {
-                            zoom_degree = zoom_degree+0.1f;
-                            if(zoom_degree>1){
-                                zoom_degree = 1;
+                        }
+                        @Override
+                        public void onBeginningOfSpeech() {
+                        }
+                        @Override
+                        public void onRmsChanged(float v) {
+                        }
+                        @Override
+                        public void onBufferReceived(byte[] bytes) {
+                        }
+                        @Override
+                        public void onEndOfSpeech() {
+
+                        }
+                        @Override
+                        public void onError(int i) {
+
+                        }
+                        @Override
+                        public void onPartialResults(Bundle bundle) {
+
+                        }
+                        @Override
+                        public void onEvent(int i, Bundle bundle) {
+
+                        }
+                        @Override
+                        public void onResults(Bundle bundle) {
+                            ArrayList<String> data = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+
+                            if(data.get(0).equals("far")){
+                                zoom_degree = zoom_degree-0.1f;
+                                if(zoom_degree<0){
+                                    zoom_degree = 0;
+                                }
+                                mCameraControl.setLinearZoom(zoom_degree);
                             }
-                            mCameraControl.setLinearZoom(zoom_degree);
+                            if(data.get(0).equals("close")){
+                                zoom_degree = zoom_degree+0.1f;
+                                if(zoom_degree>1){
+                                    zoom_degree = 1;
+                                }
+                                mCameraControl.setLinearZoom(zoom_degree);
+
+                            }
+                            if(data.get(0).equals("reset")){
+                                mCameraControl.setLinearZoom(0);
+                            }
+                            Log.e("",data.get(0));
                         }
                     });
 

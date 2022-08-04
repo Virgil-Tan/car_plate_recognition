@@ -1,7 +1,6 @@
 package com.example.yolov5tfliteandroid.analysis;
 
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -14,6 +13,7 @@ import android.net.Uri;
 import android.os.Environment;
 import android.provider.ContactsContract;
 import android.provider.MediaStore;
+import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -71,28 +71,27 @@ public class FullScreenAnalyse implements ImageAnalysis.Analyzer {
     ImageView boxLabelCanvas;
     PreviewView previewView;
     int rotation;
-    private TextView inferenceTimeTextView;
     ImageProcess imageProcess;
     private Yolov5TFLiteDetector yolov5TFLiteDetector;
+    TextToSpeech textToSpeech;
 
-    Map<Integer,String> map;
-    int key;
+    String targetPlate;
 
     public FullScreenAnalyse(Context context,
                              PreviewView previewView,
                              ImageView boxLabelCanvas,
                              int rotation,
-                             TextView inferenceTimeTextView,
-                             Yolov5TFLiteDetector yolov5TFLiteDetector) {
+                             Yolov5TFLiteDetector yolov5TFLiteDetector,
+                             TextToSpeech textToSpeech,
+                             String targetPlate) {
         this.FScontect = context;
         this.previewView = previewView;
         this.boxLabelCanvas = boxLabelCanvas;
         this.rotation = rotation;
-        this.inferenceTimeTextView = inferenceTimeTextView;
         this.imageProcess = new ImageProcess();
         this.yolov5TFLiteDetector = yolov5TFLiteDetector;
-        this.map = new HashMap<>();
-        key =0;
+        this.textToSpeech = textToSpeech;
+        this.targetPlate = targetPlate;
     }
 
     @Override
@@ -183,20 +182,53 @@ public class FullScreenAnalyse implements ImageAnalysis.Analyzer {
             textPain.setColor(Color.RED);
             textPain.setStyle(Paint.Style.FILL);
 
-            map .clear();
-            key = 0;
             for (Recognition res : recognitions) {
                 RectF location = res.getLocation();
                 String label = res.getLabelName();
                 float confidence = res.getConfidence();
                 modelToPreviewTransform.mapRect(location);
 
-                String rec = textRecogni(res,fullImageBitmap,location);
-//                textRecogni(res,fullImageBitmap,location);
+//                String rec = textRecogni(res,fullImageBitmap,location);
+                Task<Text> te = textRecogni(res,fullImageBitmap,location);
 
+                te.addOnSuccessListener(new OnSuccessListener<Text>() {
+//                            String resultText = null;
+                            @Override
+                            public void onSuccess(Text visionText) {
+                                String temptext = visionText.getText();
+//                                resultText = temptext;
+                                plate_num = temptext;
+                                String plate = temptext.replace(" ","");
+
+                                Log.e("",plate);
+                                Log.e("","a: "+textToSpeech.isSpeaking());
+                                Log.e("","b: "+targetPlate);
+
+                                if(!textToSpeech.isSpeaking() && plate.equals(targetPlate)){
+                                    startAuto("found the car");
+                                }
+                                if(!textToSpeech.isSpeaking() && plate.equals("")){
+                                    startAuto("too far can not detect");
+                                }
+                            }
+
+                            public void startAuto(String data) {
+                                textToSpeech.setPitch(0.5f);
+                                // 设置语速
+                                textToSpeech.setSpeechRate(1f);
+                                textToSpeech.speak(data,
+                                        TextToSpeech.QUEUE_FLUSH, null);
+                            }
+
+                        })
+                        .addOnFailureListener(new OnFailureListener() {
+                            @Override
+                            public void onFailure(@NonNull Exception e) {
+                                Log.e(e.toString(),".");
+                            }
+                        });
                 cropCanvas.drawRect(location, boxPaint);
-                cropCanvas.drawText(label + ":" + String.format("%.2f", confidence)+"  "+rec, location.left, location.top, textPain);
-                key++;
+                cropCanvas.drawText(label + ":" + String.format("%.2f", confidence)+"  "+plate_num, location.left, location.top, textPain);
             }
             long end = System.currentTimeMillis();
             long costTime = (end - start);
@@ -208,13 +240,12 @@ public class FullScreenAnalyse implements ImageAnalysis.Analyzer {
                 // 这里就是回到主线程处理子线程的回调数据.
                 .subscribe((Result result) -> {
                     boxLabelCanvas.setImageBitmap(result.bitmap);
-                    inferenceTimeTextView.setText(Long.toString(result.costTime) + "ms");
                 });
     }
 
 
 
-    public String textRecogni(Recognition res,Bitmap fullImageBitmap,RectF location){
+    public Task<Text> textRecogni(Recognition res,Bitmap fullImageBitmap,RectF location){
 //        final String[] resultText = new String[1];
             Bitmap carPlateBitmap = Bitmap.createBitmap(fullImageBitmap,
                     (int) location.left,
@@ -234,28 +265,24 @@ public class FullScreenAnalyse implements ImageAnalysis.Analyzer {
             InputImage plateImage = InputImage.fromBitmap(carPlateBitmap,0);
 
             Task<Text> result =
-                    recognizer.process(plateImage)
-                            .addOnSuccessListener(new OnSuccessListener<Text>() {
-                                @Override
-                                public void onSuccess(Text visionText) {
-                                    String resultText = visionText.getText();
-//                                    map.put(key,resultText);
-                                    plate_num = resultText;
-                                }
-                            })
-                            .addOnFailureListener(new OnFailureListener() {
-                                @Override
-                                public void onFailure(@NonNull Exception e) {
-                                    Log.e(e.toString(),".");
-                                }
-                            });
-            if (result.isSuccessful()) {
-                Text a= result.getResult();
-
-                Log.e(a.getText(),".");
-            }
+                    recognizer.process(plateImage);
+//            result.addOnSuccessListener(new OnSuccessListener<Text>() {
+//                                @Override
+//                                public void onSuccess(Text visionText) {
+//                                    String resultText = visionText.getText();
+////                                    map.put(key,resultText);
+//                                    plate_num = resultText;
+//                                }
+//                            })
+//                            .addOnFailureListener(new OnFailureListener() {
+//                                @Override
+//                                public void onFailure(@NonNull Exception e) {
+//                                    Log.e(e.toString(),".");
+//                                }
+//                            });
 
 
-            return this.plate_num;
+
+            return result;
     }
 }
